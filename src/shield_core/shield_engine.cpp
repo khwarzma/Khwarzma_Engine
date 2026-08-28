@@ -1,6 +1,7 @@
 #include "khshield/shield_engine.hpp"
 #include "khshield/text/arabizi.hpp"
 #include <algorithm>
+#include <fstream>
 #include <sstream>
 
 namespace khshield {
@@ -34,6 +35,22 @@ void ShieldEngine::add_keywords(const std::vector<std::string>& keywords) {
         }
     }
     text_matcher_.build();
+}
+
+bool ShieldEngine::load_profanity_dictionary(const std::filesystem::path& path) {
+    if (path.empty() || !std::filesystem::exists(path)) {
+        return false;
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    text_matcher_.load_dictionary_from_json(buffer.str());
+    return true;
 }
 
 bool ShieldEngine::load_model(const std::filesystem::path& model_path) {

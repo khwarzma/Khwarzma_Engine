@@ -12,7 +12,7 @@ class alignas(utils::kCacheLineAlignment) BitStreamWriter {
 public:
     constexpr BitStreamWriter() noexcept = default;
     
-    constexpr explicit BitStreamWriter(MutableBuffer buffer) noexcept {
+    explicit BitStreamWriter(MutableBuffer buffer) noexcept {
         static_cast<void>(set_buffer(buffer));
     }
 
@@ -42,7 +42,7 @@ class alignas(utils::kCacheLineAlignment) BitStreamReader {
 public:
     constexpr BitStreamReader() noexcept = default;
     
-    constexpr explicit BitStreamReader(ReadOnlyBuffer buffer) noexcept {
+    explicit BitStreamReader(ReadOnlyBuffer buffer) noexcept {
         static_cast<void>(set_buffer(buffer));
     }
 

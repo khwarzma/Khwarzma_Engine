@@ -34,6 +34,7 @@ public:
     // Dynamic Rule Management APIs
     void add_keyword(std::string_view keyword);
     void add_keywords(const std::vector<std::string>& keywords);
+    bool load_profanity_dictionary(const std::filesystem::path& path);
     bool load_model(const std::filesystem::path& model_path);
 
     // Direct memory/string processing routines

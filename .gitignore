@@ -4,3 +4,6 @@ build/
 .env
 *.sock
 *.log
+.copilot/
+.project_summary/
+build-*/

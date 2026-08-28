@@ -21,11 +21,11 @@ struct SymbolStats {
 
 class ContextModel {
 public:
-    constexpr ContextModel() noexcept {
+    ContextModel() noexcept {
         reset();
     }
 
-    constexpr explicit ContextModel(size_t order) noexcept {
+    explicit ContextModel(size_t order) noexcept {
         set_order(order);
         reset();
     }

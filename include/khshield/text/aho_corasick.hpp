@@ -30,7 +30,9 @@ public:
     AhoCorasick& operator=(AhoCorasick&&) noexcept = default;
 
     void add_keyword(std::string_view keyword);
+    void clear();
     void build();
+    void load_dictionary_from_json(std::string_view json_text);
     [[nodiscard]] std::vector<MatchResult> search(std::string_view text) const;
     [[nodiscard]] bool contains_any(std::string_view text) const;
 

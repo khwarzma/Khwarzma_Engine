@@ -4,6 +4,51 @@
 #include <stdexcept>
 
 namespace khshield::text {
+namespace {
+
+void skip_whitespace(std::string_view text, size_t& pos) {
+    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\n' ||
+                                 text[pos] == '\r' || text[pos] == '\t')) {
+        ++pos;
+    }
+}
+
+std::string parse_json_string(std::string_view text, size_t& pos) {
+    if (pos >= text.size() || text[pos] != '"') {
+        return {};
+    }
+    ++pos;
+    std::string output;
+    output.reserve(text.size() - pos);
+    while (pos < text.size()) {
+        const char ch = text[pos++];
+        if (ch == '"') {
+            return output;
+        }
+        if (ch == '\\') {
+            if (pos >= text.size()) {
+                return {};
+            }
+            const char escaped = text[pos++];
+            switch (escaped) {
+                case '"': output.push_back('"'); break;
+                case '\\': output.push_back('\\'); break;
+                case '/': output.push_back('/'); break;
+                case 'b': output.push_back('\b'); break;
+                case 'f': output.push_back('\f'); break;
+                case 'n': output.push_back('\n'); break;
+                case 'r': output.push_back('\r'); break;
+                case 't': output.push_back('\t'); break;
+                default: output.push_back(escaped); break;
+            }
+            continue;
+        }
+        output.push_back(ch);
+    }
+    return {};
+}
+
+} // namespace
 
 void AhoCorasick::add_keyword(std::string_view keyword) {
     if (keyword.empty()) return;
@@ -20,6 +65,99 @@ void AhoCorasick::add_keyword(std::string_view keyword) {
         current = nodes_[current].children[c];
     }
     nodes_[current].output_patterns.emplace_back(keyword);
+}
+
+void AhoCorasick::clear() {
+    std::unique_lock lock(mutex_);
+    nodes_.assign(1, Node{});
+    is_built_ = false;
+}
+
+void AhoCorasick::load_dictionary_from_json(std::string_view json_text) {
+    clear();
+    if (json_text.empty()) {
+        return;
+    }
+
+    std::string_view text = json_text;
+    size_t pos = 0;
+    skip_whitespace(text, pos);
+    if (pos >= text.size() || text[pos] != '{') {
+        return;
+    }
+    ++pos;
+
+    while (true) {
+        skip_whitespace(text, pos);
+        if (pos >= text.size()) {
+            break;
+        }
+        if (text[pos] == '}') {
+            ++pos;
+            break;
+        }
+
+        const std::string key = parse_json_string(text, pos);
+        if (key.empty()) {
+            break;
+        }
+        skip_whitespace(text, pos);
+        if (pos >= text.size() || text[pos] != ':') {
+            break;
+        }
+        ++pos;
+        skip_whitespace(text, pos);
+        if (pos >= text.size() || text[pos] != '[') {
+            break;
+        }
+        ++pos;
+
+        while (true) {
+            skip_whitespace(text, pos);
+            if (pos >= text.size()) {
+                break;
+            }
+            if (text[pos] == ']') {
+                ++pos;
+                break;
+            }
+
+            const std::string value = parse_json_string(text, pos);
+            if (!value.empty()) {
+                add_keyword(value);
+            }
+
+            skip_whitespace(text, pos);
+            if (pos >= text.size()) {
+                break;
+            }
+            if (text[pos] == ',') {
+                ++pos;
+                continue;
+            }
+            if (text[pos] == ']') {
+                ++pos;
+                break;
+            }
+            break;
+        }
+
+        skip_whitespace(text, pos);
+        if (pos >= text.size()) {
+            break;
+        }
+        if (text[pos] == ',') {
+            ++pos;
+            continue;
+        }
+        if (text[pos] == '}') {
+            ++pos;
+            break;
+        }
+        break;
+    }
+
+    build();
 }
 
 void AhoCorasick::build() {

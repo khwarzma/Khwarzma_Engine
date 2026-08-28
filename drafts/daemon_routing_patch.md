@@ -1,3 +1,29 @@
+# Production-ready daemon routing draft
+
+This draft replaces the static daemon response with bounded, thread-safe routing.
+It intentionally does **not** modify `src/server_daemon/main_daemon.cpp`.
+
+## Design notes
+
+- Uses a fixed two-worker queue. The accept loop never creates unbounded detached
+  threads; when the queue is full, the client receives a `busy` response.
+- Uses `engine_mutex` around all ShieldEngine and compression-engine calls.
+- Reads configuration from the environment, with the required defaults:
+  `/tmp/kh_core.sock`, `/home/kh-core/app/models/ar_v1.khm`, and
+  `/tmp/kh_processing/`.
+- Media requests use `file_path`, constrained to the configured processing
+  directory. The file is read from disk and is not accepted as Base64 JSON.
+- The current repository has no `CompEngine` class. Compression is implemented
+  with the existing `khcomp::image::ImageFramePipeline` and
+  `khcomp::audio::AudioCodecEngine` APIs; both are protected by the same mutex.
+- Image compression expects raw grayscale pixels and `width`/`height` divisible
+  by 8. Audio compression expects little-endian signed PCM16 and `channels`,
+  `sample_rate`, and `num_samples`.
+- `safe_write()` handles partial writes, `EINTR`, zero-byte writes, and errors.
+
+## Full proposed `src/server_daemon/main_daemon.cpp`
+
+```cpp
 #include <atomic>
 #include <array>
 #include <condition_variable>
@@ -40,8 +66,6 @@ constexpr size_t kMaxFileBytes = 128 * 1024 * 1024;
 std::string socket_path = "/tmp/kh_core.sock";
 std::filesystem::path model_path = "/home/kh-core/app/models/ar_v1.khm";
 std::filesystem::path processing_dir = "/tmp/kh_processing/";
-std::filesystem::path profanity_list_path = "/home/kh-core/app/config/profanity_words.json";
-std::string max_workers = std::to_string(kMaxWorkers);
 int server_fd = -1;
 std::atomic<bool> shutting_down{false};
 
@@ -426,8 +450,6 @@ int main()
     socket_path = env_or_default("UNIX_SOCKET_PATH", socket_path);
     model_path = env_or_default("MODELS_PATH", model_path.string());
     processing_dir = env_or_default("TEMP_PROCESSING_DIR", processing_dir.string());
-    profanity_list_path = env_or_default("PROFANITY_LIST_PATH", profanity_list_path.string());
-    max_workers = env_or_default("MAX_WORKERS", max_workers);
 
     std::error_code ec;
     std::filesystem::create_directories(processing_dir, ec);
@@ -438,14 +460,6 @@ int main()
     if (std::filesystem::exists(model_path, ec) && !shield_engine.load_model(model_path)) {
         std::cerr << "Failed to load model: " << model_path << '\n';
         return 1;
-    }
-    if (!profanity_list_path.empty() && std::filesystem::exists(profanity_list_path, ec)) {
-        if (!shield_engine.load_profanity_dictionary(profanity_list_path)) {
-            std::cerr << "Failed to load profanity dictionary: " << profanity_list_path << '\n';
-            return 1;
-        }
-    } else if (!profanity_list_path.empty()) {
-        std::cerr << "Warning: profanity dictionary not found at " << profanity_list_path << '\n';
     }
 
     std::signal(SIGINT, handle_signal);
@@ -508,3 +522,14 @@ int main()
     unlink(socket_path.c_str());
     return 0;
 }
+```
+
+## Integration checklist
+
+- Review the request contract for raw grayscale images and PCM16 audio.
+- Confirm clients provide `width`, `height`, `sample_rate`, `channels`, and
+  `quality_factor` where applicable.
+- Compile the draft after copying it into `main_daemon.cpp`; this draft itself is
+  deliberately not integrated.
+- Add protocol-level tests for queue saturation, traversal attempts, malformed
+  JSON, partial writes, and model-load failure.
